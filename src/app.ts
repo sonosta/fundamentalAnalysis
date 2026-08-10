@@ -1,14 +1,16 @@
 import express, { Request, Response } from 'express';
-// import { pool } from './db/pool';
+import { pool } from './db/pool';
 import { MoexHttpClient } from './clients/moex/moex-http.client';
 import { MoexIssClient } from './clients/moex/moex-iss.client';
 import { CandlesRepository } from './db/repositories/candles.repository';
 import { SyncService } from './services/sync.service';
+import { SecuritiesRepository } from './db/repositories/security.repository';
 
 const app = express();
 const PORT = 3000;
 const moexHttpClient = new MoexHttpClient();
-const moexIssClient = new MoexIssClient(moexHttpClient);
+const securitiesRepository = new SecuritiesRepository();
+const moexIssClient = new MoexIssClient(moexHttpClient, securitiesRepository);
 
 
 async function bootstrap() {
@@ -25,14 +27,34 @@ async function bootstrap() {
 }
 
 bootstrap()
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+    .catch((error) => {
+        console.error(error);
+        process.exit(1);
+    });
+
+app.get('/db/test', async (_req, res) => {
+    try {
+        const result = await pool.query('SELECT NOW() as now');
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Database error' });
+    }
+});
 
 app.get('/moex/securities', async (_req, res) => {
     try {
         const data = await moexIssClient.getMoexSecurities();
+        res.json(data);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Failed to fetch MOEX securities' });
+    }
+});
+
+app.get('/moex/updateSecurities', async (_req, res) => {
+    try {
+        const data = await moexIssClient.syncSecurities()
         res.json(data);
     } catch (error) {
         console.error(error);

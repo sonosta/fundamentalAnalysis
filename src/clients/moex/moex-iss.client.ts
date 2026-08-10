@@ -1,5 +1,6 @@
 import { MoexHttpClient } from './moex-http.client';
 import { MoexResponse } from './moex.types';
+import { SecuritiesRepository } from '../../db/repositories/security.repository';
 
 function mapBlock<T = Record<string, unknown>>(response: MoexResponse, blockName: string): T[] {
   const block = response[blockName];
@@ -14,8 +15,9 @@ function mapBlock<T = Record<string, unknown>>(response: MoexResponse, blockName
   });
 }
 
+
 export class MoexIssClient {
-    constructor(private readonly http: MoexHttpClient) {}
+    constructor(private readonly http: MoexHttpClient, private readonly securitiesRepo: SecuritiesRepository) {}
 
     async getSecurities(engine: string, market: string, board?: string) {
         const path = board
@@ -117,7 +119,7 @@ export class MoexIssClient {
     async getMoexSecurities() {
         const url =
             'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json' +
-            '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME';
+            '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME,SECTYPE,LISTLEVEL';
 
         const response = await fetch(url);
 
@@ -137,7 +139,43 @@ export class MoexIssClient {
             return {
             SECID: String(obj.SECID ?? ''),
             SHORTNAME: String(obj.SHORTNAME ?? ''),
+            SECNAME: String(obj.SECNAME ?? ''),
+            LISTLEVEL: String(obj.LISTLEVEL ?? ''),
+            SECTYPE: String(obj.SECTYPE ?? ''),
             };
         });
+    }
+
+    async saveMoexSecurities(){
+        const arrSecurities = await this.getMoexSecurities() 
+    }
+
+    
+
+    async syncSecurities() {
+        const url =
+        'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json' +
+        '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME,LISTLEVEL,SECTYPE';
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`MOEX ISS request failed: ${response.status}`);
+        }
+
+        const json = (await response.json()) as MoexResponse;
+        const { columns, data } = json.securities;
+
+        const securities = mapBlock<{
+            SECID: string;
+            SHORTNAME: string;
+            SECNAME: string;
+            LISTLEVEL: string;
+            SECTYPE: string;
+        }>(json, 'securities');
+
+        await this.securitiesRepo.saveMany(securities);
+
+        return securities.length;
     }
 }
