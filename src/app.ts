@@ -2,8 +2,6 @@ import express, { Request, Response } from 'express';
 import { pool } from './db/pool';
 import { MoexHttpClient } from './clients/moex/moex-http.client';
 import { MoexIssClient } from './clients/moex/moex-iss.client';
-import { CandlesRepository } from './db/repositories/candles.repository';
-import { SyncService } from './services/sync.service';
 import { SecuritiesRepository } from './db/repositories/security.repository';
 
 const app = express();
@@ -12,25 +10,6 @@ const moexHttpClient = new MoexHttpClient();
 const securitiesRepository = new SecuritiesRepository();
 const moexIssClient = new MoexIssClient(moexHttpClient, securitiesRepository);
 
-
-async function bootstrap() {
-    const candlesRepository = new CandlesRepository();
-    const syncService = new SyncService(moexIssClient, candlesRepository);
-
-    const inserted = await syncService.syncDailyCandles(
-        'SBER',
-        '2024-01-01',
-        '2024-12-31',
-    );
-
-    console.log(`Saved rows: ${inserted}`);
-}
-
-bootstrap()
-    .catch((error) => {
-        console.error(error);
-        process.exit(1);
-    });
 
 app.get('/db/test', async (_req, res) => {
     try {
@@ -59,6 +38,32 @@ app.get('/moex/updateSecurities', async (_req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Failed to fetch MOEX securities' });
+    }
+});
+
+app.get('/moex/candles', async (_req, res) => {
+    try {
+        const { secid, from, till, interval } = _req.query;
+
+        const secidStr = String(secid ?? '');
+        const fromStr = String(from ?? '');
+        const tillStr = String(till ?? '');
+        const intervalNumber = Number(interval ?? 24);
+
+        const params = {
+            engine:'stock',
+            market: 'shares',
+            board: 'TQBR',
+            secid: secidStr,
+            from: fromStr,
+            till: tillStr,
+            interval: intervalNumber,
+         }
+        const data = await moexIssClient.getCandles(params)
+        res.json(data);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Failed to fetch MOEX candels' });
     }
 });
 

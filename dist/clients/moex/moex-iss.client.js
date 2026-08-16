@@ -20,61 +20,34 @@ class MoexIssClient {
         this.http = http;
         this.securitiesRepo = securitiesRepo;
     }
-    async getSecurities(engine, market, board) {
-        const path = board
-            ? `/engines/${engine}/markets/${market}/boards/${board}/securities`
-            : `/engines/${engine}/markets/${market}/securities`;
-        const data = await this.http.get(path, {
-            lang: 'ru',
-            'iss.only': 'securities',
-        });
-        return mapBlock(data, 'securities');
-    }
-    async getSecurityHistory(params) {
-        const { engine, market, board, secid, from, till, start = 0 } = params;
-        const data = await this.http.get(`/history/engines/${engine}/markets/${market}/boards/${board}/securities/${secid}`, {
-            from,
-            till,
-            start,
-        });
-        return {
-            history: mapBlock(data, 'history'),
-            cursor: mapBlock(data, 'history.cursor')[0],
-        };
-    }
-    async getAllSecurityHistory(params) {
-        const result = [];
-        let start = 0;
-        while (true) {
-            const page = await this.getSecurityHistory({ ...params, start });
-            result.push(...page.history);
-            if (!page.cursor)
-                break;
-            const index = Number(page.cursor.INDEX ?? 0);
-            const total = Number(page.cursor.TOTAL ?? 0);
-            const pageSize = Number(page.cursor.PAGESIZE ?? 100);
-            if (index + pageSize >= total)
-                break;
-            start += pageSize;
-        }
-        return result;
-    }
     async getCandles(params) {
         const { engine, market, board, secid, from, till, interval = 24, start = 0 } = params;
-        const data = await this.http.get(`/history/engines/${engine}/markets/${market}/boards/${board}/securities/${secid}/candles`, {
-            from,
-            till,
-            interval,
-            start,
+        const url = 'https://iss.moex.com/iss';
+        const response = await fetch(url + `/history/engines/${engine}/markets/${market}/boards/${board}/securities/${secid}/candles.json?from=${from}&till=${till}&interval=${interval}&start=${start}`);
+        if (!response.ok) {
+            throw new Error(`MOEX ISS request failed: ${response.status} ${response.statusText}`);
+        }
+        const json = (await response.json());
+        const { columns, data } = json.history;
+        return data.map((row) => {
+            const obj = Object.fromEntries(columns.map((column, index) => [column, row[index]]));
+            return {
+                SECID: String(obj.SECID ?? ''),
+                SHORTNAME: String(obj.SHORTNAME ?? ''),
+                TRADEDATE: String(obj.TRADEDATE ?? ''),
+                VALUE: String(obj.VALUE ?? ''),
+                VOLUME: String(obj.VOLUME ?? ''),
+                CLOSE: String(obj.CLOSE ?? ''),
+                OPEN: String(obj.OPEN ?? ''),
+                HIGH: String(obj.HIGH ?? ''),
+                LOW: String(obj.LOW ?? ''),
+                WAPRICE: String(obj.WAPRICE ?? ''),
+            };
         });
-        return {
-            candles: mapBlock(data, 'candles'),
-            cursor: mapBlock(data, 'history.cursor')[0] || mapBlock(data, 'candles.cursor')[0],
-        };
     }
     async getMoexSecurities() {
         const url = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json' +
-            '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME';
+            '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME,SECTYPE,LISTLEVEL';
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`MOEX ISS request failed: ${response.status} ${response.statusText}`);
@@ -87,15 +60,14 @@ class MoexIssClient {
                 SECID: String(obj.SECID ?? ''),
                 SHORTNAME: String(obj.SHORTNAME ?? ''),
                 SECNAME: String(obj.SECNAME ?? ''),
+                LISTLEVEL: String(obj.LISTLEVEL ?? ''),
+                SECTYPE: String(obj.SECTYPE ?? ''),
             };
         });
     }
-    async saveMoexSecurities() {
-        const arrSecurities = await this.getMoexSecurities();
-    }
     async syncSecurities() {
         const url = 'https://iss.moex.com/iss/engines/stock/markets/shares/boards/TQBR/securities.json' +
-            '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME';
+            '?iss.meta=off&iss.only=securities&securities.columns=SECID,SHORTNAME,SECNAME,LISTLEVEL,SECTYPE,BOARDID,BOARDNAME';
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`MOEX ISS request failed: ${response.status}`);

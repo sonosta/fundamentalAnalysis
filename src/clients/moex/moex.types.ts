@@ -10,6 +10,8 @@ export type MoexSecuritiesRow = {
     SECNAME: string;
     LISTLEVEL: string;
     SECTYPE: string;
+    BOARDID: string;
+    BOARDNAME: string;
 };
 
 export type DailyQuote = {
